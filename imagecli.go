@@ -5,11 +5,19 @@ import (
 	"fmt"
 	"github.com/corona10/goimagehash"
 	"github.com/urfave/cli/v2"
+	"golang.org/x/image/bmp"
+	"golang.org/x/image/tiff"
+	"golang.org/x/image/webp"
+	"image"
+	"image/gif"
 	"image/jpeg"
+	"image/png"
 	"log"
 	"os"
+	"path/filepath"
 	"sort"
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -78,55 +86,32 @@ func compare(c *cli.Context) error {
 		rows[i] = append(rows[i], distance)
 		rows[i] = append(rows[i], elapsed)
 	}
-
+	// write to csv
 	writeResults(file+"results.csv", rows)
 
+	// satisfy cli action reqs
 	return nil
 
 }
-
-
 
 func compareImages(image1 string, image2 string) []float64 {
 	// Start timer
 	start := time.Now()
 
-	// handle opening and closing of the images
-	file1, err := os.Open(image1)
-	if err != nil {
-		log.Fatalf("Cannot open image '%s': %s\n", file1, err.Error())
-	}
-	file2, err := os.Open(image2)
-	if err != nil {
-		log.Fatalf("Cannot open image '%s': %s\n", file2, err.Error())
-	}
-	defer file1.Close()
-	defer file2.Close()
-
-	// decode
-	img1, _ := jpeg.Decode(file1)
-	if err != nil {
-		log.Fatalf("Cannot decode '%s': %s\n", img1, err.Error())
-	}
-	img2, _ := jpeg.Decode(file2)
-	if err != nil {
-		log.Fatalf("Cannot decode '%s': %s\n", img2, err.Error())
-	}
-
 	// calculate average hash
-	avg1, _ := goimagehash.AverageHash(img1)
-	avg2, _ := goimagehash.AverageHash(img2)
+	avg1, _ := goimagehash.AverageHash(imageDecoded(image1))
+	avg2, _ := goimagehash.AverageHash(imageDecoded(image2))
 	distance1, _ := avg1.Distance(avg2)
 
 	// calculate difference hash
-	diff1, _ := goimagehash.DifferenceHash(img1)
-	diff2, _ := goimagehash.DifferenceHash(img2)
+	diff1, _ := goimagehash.DifferenceHash(imageDecoded(image1))
+	diff2, _ := goimagehash.DifferenceHash(imageDecoded(image2))
 	distance2, _ := diff1.Distance(diff2)
 
 	// pick the greater one
 	distance := 0
 
-	if distance1 > distance2{
+	if distance1 > distance2 {
 		distance = distance1
 	} else {
 		distance = distance2
@@ -134,14 +119,104 @@ func compareImages(image1 string, image2 string) []float64 {
 	// set it
 	elapsed := float64(time.Since(start) / time.Millisecond)
 	values := make([]float64, 2)
-	values[0] = float64(distance)/100
+	values[0] = float64(distance) / 100
 	values[1] = elapsed
 	return values
 }
 
 // IMAGE HELPERS
+type FileType int
 
+const (
+	PNG FileType = iota
+	JPG
+	GIF
+	WEBP
+	BMP
+	TIFF
+	ERR
+)
 
+func getFileType(input string) FileType {
+	switch input {
+	case "jpg":
+		fallthrough
+	case "jpeg":
+		return JPG
+	case "png":
+		return PNG
+	case "gif":
+		return GIF
+	case "bmp":
+		return BMP
+	case "webp":
+		return WEBP
+	case "tiff":
+		return TIFF
+	default:
+		return ERR
+	}
+}
+
+func imageDecoded(image string) image.Image {
+
+	// handle opening and closing of the images
+	file, err := os.Open(image)
+	if err != nil {
+		log.Fatalf("Cannot open image '%s': %s\n", file, err.Error())
+	}
+	defer file.Close()
+
+	// get extension type
+	ext := strings.ToLower(filepath.Ext(image))
+	// validate file type
+	startType := getFileType(ext[1:])
+	if startType == ERR {
+		log.Fatalf("file input type not valid")
+	}
+
+	// decode
+	if startType == JPG {
+		img, _ := jpeg.Decode(file)
+		if err != nil {
+			log.Fatalf("Cannot decode '%s': %s\n", img, err.Error())
+		}
+		return img
+
+	} else if startType == PNG {
+		img, _ := png.Decode(file)
+		if err != nil {
+			log.Fatalf("Cannot decode '%s': %s\n", img, err.Error())
+		}
+		return img
+	} else if startType == GIF {
+		img, _ := gif.Decode(file)
+		if err != nil {
+			log.Fatalf("Cannot decode '%s': %s\n", img, err.Error())
+		}
+		return img
+	} else if startType == BMP {
+		img, _ := bmp.Decode(file)
+		if err != nil {
+			log.Fatalf("Cannot decode '%s': %s\n", img, err.Error())
+		}
+		return img
+	} else if startType == WEBP {
+		img, _ := webp.Decode(file)
+		if err != nil {
+			log.Fatalf("Cannot decode '%s': %s\n", img, err.Error())
+		}
+		return img
+	} else if startType == TIFF {
+		img, _ := tiff.Decode(file)
+		if err != nil {
+			log.Fatalf("Cannot decode '%s': %s\n", img, err.Error())
+		}
+		return img
+	}
+
+	return nil
+}
 
 //CSV FILE HELPERS
 // `verifyFile` takes a filename and returns a two-dimensional list of spreadsheet cells
